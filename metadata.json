@@ -1,0 +1,5 @@
+{
+  "name": "Ad-Opoly 3D",
+  "description": "A high-fidelity 3D isometric interactive game board where every square is a dynamic advertisement. Features smooth avatar movement, dynamic content loading, and a gamified experience built with React Three Fiber.",
+  "requestFramePermissions": []
+}
