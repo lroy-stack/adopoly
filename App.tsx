@@ -6,7 +6,9 @@ import {
   PerspectiveCamera, 
   Environment, 
   ContactShadows,
-  Float
+  Float,
+  Stars,
+  Sky
 } from '@react-three/drei';
 import { GameState, AdData, Reward, PlayerRank, CharacterType } from './types';
 import { 
@@ -27,6 +29,7 @@ import Leaderboard from './components/Leaderboard';
 import ChallengeOverlay from './components/ChallengeOverlay';
 import ReferralModal from './components/ReferralModal';
 import AdManager from './components/AdManager';
+import SurroundingCity from './components/SurroundingCity';
 
 const App: React.FC = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -51,7 +54,6 @@ const App: React.FC = () => {
     characterType: 'EXPLORER'
   });
 
-  // Load custom ads on mount and updates
   const loadCustomAds = useCallback(() => {
     const saved = localStorage.getItem('adopoly_custom_ads');
     if (saved) setCustomAds(JSON.parse(saved));
@@ -61,19 +63,15 @@ const App: React.FC = () => {
     loadCustomAds();
   }, [loadCustomAds]);
 
-  // Merge custom ads with mock ads for the board
-  // We replace the standard "Brand X" squares with custom ones
   const boardAds = useMemo(() => {
     const combined = [...MOCK_ADS];
     customAds.forEach((custom, index) => {
-      // Find a non-corner square to replace, starting from index 1
       let targetIdx = 1;
       let count = 0;
       while (targetIdx < TOTAL_SQUARES && count < index) {
         if (targetIdx % 10 !== 0) count++;
         targetIdx++;
       }
-      // Ensure we don't replace corners
       while (targetIdx % 10 === 0 && targetIdx < TOTAL_SQUARES) targetIdx++;
       
       if (targetIdx < TOTAL_SQUARES) {
@@ -138,6 +136,11 @@ const App: React.FC = () => {
     }, 1200);
   };
 
+  const handleCityAdClick = (ad: AdData) => {
+    if (gameState.isMoving) return;
+    setGameState(prev => ({ ...prev, selectedAd: ad }));
+  };
+
   const handleChallengeComplete = (bonusScore: number) => {
     setGameState(prev => {
       const newScore = prev.score + bonusScore;
@@ -157,15 +160,42 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-screen bg-slate-50 overflow-hidden font-sans">
-      <Canvas shadows dpr={[1, 2]}>
-        <PerspectiveCamera makeDefault position={[12, 12, 12]} fov={36} />
-        <OrbitControls enablePan={false} minDistance={8} maxDistance={25} maxPolarAngle={Math.PI / 2.1} />
+    <div className="relative w-full h-screen bg-slate-900 overflow-hidden font-sans">
+      <Canvas 
+        shadows 
+        dpr={[1, 1.2]} // Capped for performance
+        gl={{ 
+          antialias: false, 
+          powerPreference: "high-performance",
+          alpha: false,
+          stencil: false,
+          depth: true
+        }}
+      >
+        <PerspectiveCamera makeDefault position={[12, 12, 12]} fov={38} />
+        <OrbitControls 
+          enablePan={false} 
+          minDistance={12} 
+          maxDistance={50} 
+          maxPolarAngle={Math.PI / 2.1} 
+        />
+        
         <ambientLight intensity={0.7} />
-        <spotLight position={[10, 20, 10]} angle={0.25} penumbra={1} intensity={1.5} castShadow />
-        <directionalLight position={[-10, 10, -5]} intensity={0.6} />
+        <directionalLight 
+          position={[-10, 20, -10]} 
+          intensity={0.8} 
+          castShadow 
+          shadow-mapSize={[512, 512]} // Reduced for perf
+          shadow-camera-far={100}
+        />
+
+        <Sky sunPosition={[100, 10, 100]} turbidity={0.01} rayleigh={0.2} />
+        <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={1} />
+        <Environment preset="city" background={false} />
 
         <group rotation={[0, 0, 0]} position={[0, -1, 0]}>
+          <SurroundingCity ads={boardAds} onAdClick={handleCityAdClick} />
+
           {boardAds.map((ad, idx) => (
             <Square 
               key={ad.id + '-' + idx} 
@@ -175,20 +205,30 @@ const App: React.FC = () => {
               onClick={() => handleSquareClick(idx)}
             />
           ))}
+          
           <Player 
             positionIndex={gameState.currentPosition} 
             characterType={gameState.characterType}
           />
-          <Float speed={2.5} rotationIntensity={0.5} floatIntensity={1}>
-            <mesh position={[0, 2.5, 0]}>
-              <icosahedronGeometry args={[0.7, 0]} />
-              <meshStandardMaterial color="#3b82f6" roughness={0} metalness={1} emissive="#3b82f6" emissiveIntensity={0.5} />
+
+          <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.2}>
+            <mesh position={[0, 4.5, 0]}>
+              <icosahedronGeometry args={[0.4, 1]} />
+              <meshStandardMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={2} />
             </mesh>
-            <pointLight position={[0, 2.5, 0]} color="#3b82f6" intensity={3} distance={7} />
+            <pointLight position={[0, 4.5, 0]} color="#3b82f6" intensity={2} distance={15} />
           </Float>
-          <ContactShadows opacity={0.3} scale={30} blur={3} far={10} resolution={512} color="#000000" />
+
+          {/* Optimized Contact Shadows */}
+          <ContactShadows 
+            opacity={0.3} 
+            scale={40} 
+            blur={2.5} 
+            far={10} 
+            resolution={256} 
+            color="#000000" 
+          />
         </group>
-        <Environment preset="city" />
       </Canvas>
 
       <UIOverlay 
@@ -224,10 +264,10 @@ const App: React.FC = () => {
       )}
 
       <div className="absolute top-8 left-1/2 -translate-x-1/2 pointer-events-none text-center">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tighter drop-shadow-sm select-none">
-          AD<span className="text-blue-600">OPOLY</span>
+        <h1 className="text-4xl font-black text-white tracking-tighter drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)] select-none">
+          AD<span className="text-blue-500">OPOLY</span>
         </h1>
-        <p className="text-[10px] font-black text-slate-400 tracking-[0.4em] uppercase opacity-80">Interactive Ads Redefined</p>
+        <p className="text-[10px] font-black text-blue-200 tracking-[0.4em] uppercase opacity-90 drop-shadow-lg">Performance Optimized Sandbox</p>
       </div>
     </div>
   );
